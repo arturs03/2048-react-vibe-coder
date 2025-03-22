@@ -3,7 +3,7 @@ import { devtools } from 'zustand/middleware'
 
 export type Cell = number | null
 export type HexGrid = Cell[][]
-export type Direction = 'up' | 'down' | 'left' | 'right' | 'upLeft' | 'upRight' | 'downLeft' | 'downRight'
+export type Direction = 'left' | 'right' | 'upLeft' | 'upRight' | 'downLeft' | 'downRight'
 
 interface GameState {
   grid: HexGrid
@@ -13,13 +13,14 @@ interface GameState {
   initGame: () => void
   move: (direction: Direction) => void
   resetGame: () => void
+  getPosition: (row: number, col: number) => { q: number; r: number } | null
 }
 
 // Grid layout configuration for a flower/honeycomb pattern
 const GRID_LAYOUT = [
   // Center hex
   [{ q: 0, r: 0 }],
-  // Surrounding hexes (clockwise from top)
+  // First ring (clockwise from top)
   [
     { q: 0, r: -1 },  // top
     { q: 1, r: -1 },  // top-right
@@ -27,19 +28,32 @@ const GRID_LAYOUT = [
     { q: 0, r: 1 },   // bottom
     { q: -1, r: 1 },  // bottom-left
     { q: -1, r: 0 }   // top-left
+  ],
+  // Second ring (clockwise from top)
+  [
+    { q: 0, r: -2 },  // top
+    { q: 1, r: -2 },  // top-right
+    { q: 2, r: -2 },  // top-right-right
+    { q: 2, r: -1 },  // right-right
+    { q: 2, r: 0 },   // bottom-right-right
+    { q: 1, r: 1 },   // bottom-right
+    { q: 0, r: 2 },   // bottom
+    { q: -1, r: 2 },  // bottom-left
+    { q: -2, r: 2 },  // bottom-left-left
+    { q: -2, r: 1 },  // left-left
+    { q: -2, r: 0 },  // top-left-left
+    { q: -1, r: -1 }  // top-left
   ]
 ]
 
 // Direction vectors for hexagonal movement (using axial coordinates)
 const DIRECTION_VECTORS: Record<Direction, { dq: number; dr: number }> = {
-  up: { dq: 0, dr: -1 },
-  down: { dq: 0, dr: 1 },
+  left: { dq: -1, dr: 0 },
+  right: { dq: 1, dr: 0 },
   upLeft: { dq: -1, dr: 0 },
   upRight: { dq: 1, dr: -1 },
   downLeft: { dq: -1, dr: 1 },
-  downRight: { dq: 1, dr: 0 },
-  left: { dq: -1, dr: 0 },
-  right: { dq: 1, dr: 0 }
+  downRight: { dq: 1, dr: 0 }
 }
 
 const createEmptyGrid = (): HexGrid => {
@@ -66,6 +80,7 @@ const addNewTile = (grid: HexGrid): HexGrid => {
 
   if (emptyCells.length > 0) {
     const [row, col] = emptyCells[Math.floor(Math.random() * emptyCells.length)]
+    // 90% chance of 2, 10% chance of 4 (just like original 2048)
     newGrid[row][col] = Math.random() < 0.9 ? 2 : 4
   }
 
@@ -88,6 +103,33 @@ const getNextCell = (row: number, col: number, direction: Direction): [number, n
   }
 
   return null
+}
+
+const canMove = (grid: HexGrid): boolean => {
+  // Check for empty cells
+  if (getValidCells().some(([row, col]) => grid[row][col] === null)) {
+    return true
+  }
+
+  // Check for possible merges
+  const directions: Direction[] = ['left', 'right', 'upLeft', 'upRight', 'downLeft', 'downRight']
+  
+  for (const [row, col] of getValidCells()) {
+    const value = grid[row][col]
+    if (value === null) continue
+
+    for (const direction of directions) {
+      const next = getNextCell(row, col, direction)
+      if (next) {
+        const [nextRow, nextCol] = next
+        if (grid[nextRow][nextCol] === value) {
+          return true
+        }
+      }
+    }
+  }
+
+  return false
 }
 
 export const useGameStore = create<GameState>()(
@@ -115,8 +157,23 @@ export const useGameStore = create<GameState>()(
         let newScore = score
         let moved = false
 
-        // Process each cell in the grid
+        // Get cells in the correct order based on direction
         const cells = getValidCells()
+        // Sort cells so we process them in the correct order for the movement direction
+        cells.sort(([r1, c1], [r2, c2]) => {
+          const pos1 = GRID_LAYOUT[r1][c1]
+          const pos2 = GRID_LAYOUT[r2][c2]
+          const vector = DIRECTION_VECTORS[direction]
+          
+          // Project positions onto movement vector
+          const proj1 = pos1.q * vector.dq + pos1.r * vector.dr
+          const proj2 = pos2.q * vector.dq + pos2.r * vector.dr
+          
+          // Sort in reverse order of movement direction
+          return vector.dq + vector.dr > 0 ? proj1 - proj2 : proj2 - proj1
+        })
+
+        // Process each cell
         cells.forEach(([row, col]) => {
           const value = newGrid[row][col]
           if (value === null) return
@@ -156,19 +213,26 @@ export const useGameStore = create<GameState>()(
         if (moved) {
           console.log('Grid moved, adding new tile')
           const gridWithNewTile = addNewTile(newGrid)
+          const canMakeMove = canMove(gridWithNewTile)
           set({ 
             grid: gridWithNewTile,
             score: newScore,
-            bestScore: Math.max(newScore, get().bestScore)
+            bestScore: Math.max(newScore, get().bestScore),
+            isGameOver: !canMakeMove
           })
-        } else {
-          console.log('No movement possible in this direction')
         }
       },
 
       resetGame: () => {
         console.log('Resetting game')
         get().initGame()
+      },
+
+      getPosition: (row: number, col: number) => {
+        if (row >= 0 && row < GRID_LAYOUT.length && col >= 0 && col < GRID_LAYOUT[row].length) {
+          return GRID_LAYOUT[row][col]
+        }
+        return null
       }
     })
   )

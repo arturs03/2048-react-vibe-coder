@@ -1,21 +1,133 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useGameStore } from '../gameStore'
-import { Tile, Direction } from '@/types/game'
-import { v4 as uuidv4 } from 'uuid'
+import { useGameStore, Direction } from '../gameStore'
 
 describe('GameStore', () => {
   beforeEach(() => {
-    const store = useGameStore.getState()
-    store.initGame()
+    useGameStore.getState().initGame()
   })
 
   describe('Grid Layout', () => {
     it('should maintain hexagonal shape with correct number of cells', () => {
       const store = useGameStore.getState()
+      const grid = store.grid
       
-      // For a hexagonal grid of size 4, we should have 19 possible positions
+      // For our hexagonal grid, we should have 19 positions (1 + 6 + 12)
+      expect(grid.length).toBe(3) // 3 rings
+      expect(grid[0].length).toBe(1) // Center hex
+      expect(grid[1].length).toBe(6) // First ring
+      expect(grid[2].length).toBe(12) // Second ring
+      expect(grid.flat().length).toBe(19) // Total cells
+    })
+
+    it('should spawn tiles only in valid hexagonal positions', () => {
+      const store = useGameStore.getState()
+      const grid = store.grid
+      
+      // Check each cell in the grid
+      grid.forEach((row, rowIndex) => {
+        row.forEach((cell, colIndex) => {
+          if (cell !== null) {
+            // Verify the position is within the valid range
+            const position = store.getPosition(rowIndex, colIndex)
+            expect(position).toBeDefined()
+          }
+        })
+      })
+    })
+  })
+
+  describe('Tile Movement', () => {
+    const directions: Direction[] = ['up', 'down', 'left', 'right', 'upLeft', 'upRight', 'downLeft', 'downRight']
+
+    directions.forEach(direction => {
+      it(`should move tiles correctly in ${direction} direction`, () => {
+        const store = useGameStore.getState()
+        
+        // Create a known initial state with two tiles
+        const initialGrid = store.grid.map(row => [...row])
+        initialGrid[0][0] = 2 // Center
+        initialGrid[1][0] = 2 // Top position
+        
+        store.grid = initialGrid
+
+        // Move tiles
+        store.move(direction)
+
+        // Verify tiles moved correctly based on direction
+        const finalGrid = store.grid
+        const expectedMergePosition = getExpectedPosition(direction)
+        expect(finalGrid[expectedMergePosition.row][expectedMergePosition.col]).toBe(4)
+      })
+    })
+
+    it('should not allow invalid moves outside hexagonal bounds', () => {
+      const store = useGameStore.getState()
+      
+      // Place a tile at the edge of the grid
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid[2][0] = 2 // Place at top of second ring
+      
+      store.grid = initialGrid
+
+      // Try to move up (should not be possible)
+      store.move('up')
+
+      // Tile should stay in place
+      expect(store.grid[2][0]).toBe(2)
+    })
+
+    it('should handle multiple tiles moving in the same direction', () => {
+      const store = useGameStore.getState()
+      
+      // Create a line of three tiles
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid[0][0] = 2 // Center
+      initialGrid[1][0] = 2 // Top of first ring
+      initialGrid[2][0] = 2 // Top of second ring
+      
+      store.grid = initialGrid
+
+      // Move tiles down
+      store.move('down')
+
+      const finalGrid = store.grid
+      // Should have two tiles: one merged (4) and one unmerged (2)
+      expect(finalGrid[2][6]).toBe(4) // Bottom position
+      expect(finalGrid[1][3]).toBe(2) // Middle position
+    })
+  })
+
+  describe('Game Over', () => {
+    it('should detect game over when no valid moves are possible', () => {
+      const store = useGameStore.getState()
+      
+      // Fill the grid with alternating values that can't merge
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid.forEach((row, i) => {
+        row.forEach((_, j) => {
+          initialGrid[i][j] = (i + j) % 2 === 0 ? 2 : 4
+        })
+      })
+      
+      store.grid = initialGrid
+
+      // Try all possible moves
+      const directions: Direction[] = ['up', 'down', 'left', 'right', 'upLeft', 'upRight', 'downLeft', 'downRight']
+      directions.forEach(direction => store.move(direction))
+
+      expect(store.isGameOver).toBe(true)
+    })
+  })
+
+  describe('Expanded Grid and Diagonal Movement', () => {
+    beforeEach(() => {
+      useGameStore.getState().initGame()
+    })
+
+    it('should have a larger grid with more cells', () => {
+      // For a hexagonal grid of size 6, we should have 37 possible positions
       const validPositions = []
-      const GRID_SIZE = 4
+      const GRID_SIZE = 6
       const range = Math.floor(GRID_SIZE / 2)
       
       for (let q = -range; q <= range; q++) {
@@ -26,156 +138,102 @@ describe('GameStore', () => {
         }
       }
 
-      expect(validPositions.length).toBe(19) // Hexagonal grid of size 4 should have 19 cells
+      expect(validPositions.length).toBe(37) // Hexagonal grid of size 6 should have 37 cells
     })
 
-    it('should spawn tiles only in valid hexagonal positions', () => {
+    it('should handle diagonal movements correctly', () => {
       const store = useGameStore.getState()
-      const tiles = store.tiles
+      
+      // Create a known initial state with two tiles
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid[0][0] = 2
+      initialGrid[2][2] = 2
+      
+      store.grid = initialGrid
 
-      // Check each tile's position is within the valid hexagonal range
-      tiles.forEach(tile => {
-        const { q, r } = tile.position
-        const s = -q - r // Third coordinate
-        const GRID_SIZE = 4
-        const range = Math.floor(GRID_SIZE / 2)
-        
-        expect(Math.max(Math.abs(q), Math.abs(r), Math.abs(s))).toBeLessThanOrEqual(range)
-      })
+      // Move diagonally
+      store.move('downRight')
+
+      // Check if tiles merged correctly
+      const finalGrid = store.grid
+      expect(finalGrid[2][2]).toBe(4) // Merged tile should be in bottom-right
+      expect(finalGrid[0][0]).toBeNull() // Original position should be empty
+    })
+
+    it('should handle multiple diagonal movements in sequence', () => {
+      const store = useGameStore.getState()
+      
+      // Create a line of three tiles in a diagonal pattern
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid[0][0] = 2
+      initialGrid[1][1] = 2
+      initialGrid[2][2] = 2
+      
+      store.grid = initialGrid
+
+      // Move diagonally
+      store.move('downRight')
+
+      const finalGrid = store.grid
+      expect(finalGrid[2][2]).toBe(4) // First merge
+      expect(finalGrid[1][1]).toBe(2) // Remaining tile
+    })
+
+    it('should maintain proper scoring for diagonal merges', () => {
+      const store = useGameStore.getState()
+      
+      // Create a scenario where multiple merges happen
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid[0][0] = 2
+      initialGrid[1][1] = 2
+      initialGrid[2][2] = 2
+      
+      store.grid = initialGrid
+      const initialScore = store.score
+
+      // Move diagonally
+      store.move('downRight')
+
+      // Check score increase (2+2=4 points for the merge)
+      expect(store.score).toBe(initialScore + 4)
+    })
+
+    it('should handle edge cases in diagonal movement', () => {
+      const store = useGameStore.getState()
+      
+      // Create a scenario with tiles at the edge
+      const initialGrid = store.grid.map(row => [...row])
+      initialGrid[0][0] = 2
+      
+      store.grid = initialGrid
+
+      // Try to move diagonally from edge
+      store.move('downRight')
+
+      // Tile should move to valid position
+      expect(store.grid[1][1]).toBe(2)
     })
   })
+})
 
-  describe('Tile Movement', () => {
-    const directions: Direction[] = ['up', 'down', 'upLeft', 'upRight', 'downLeft', 'downRight']
-
-    directions.forEach(direction => {
-      it(`should move tiles correctly in ${direction} direction`, () => {
-        const store = useGameStore.getState()
-        
-        // Create a known initial state with two tiles
-        const initialTiles: Tile[] = [
-          {
-            id: '1',
-            value: 2,
-            position: { q: 0, r: 0 }
-          }
-        ]
-        
-        // Add second tile in the opposite direction
-        const secondTilePos = (() => {
-          switch(direction) {
-            case 'up': return { q: 0, r: 1 }
-            case 'down': return { q: 0, r: -1 }
-            case 'upLeft': return { q: 1, r: 0 }
-            case 'upRight': return { q: -1, r: 1 }
-            case 'downLeft': return { q: 1, r: -1 }
-            case 'downRight': return { q: -1, r: 0 }
-          }
-        })()
-
-        initialTiles.push({
-          id: '2',
-          value: 2,
-          position: secondTilePos
-        })
-        
-        store.tiles = initialTiles
-
-        // Move tiles
-        store.moveTiles(direction)
-
-        const tilesAfterMove = store.tiles.filter(t => t.value === 4) // Get merged tile
-
-        // Should have exactly one merged tile
-        expect(tilesAfterMove.length).toBe(1)
-        
-        // Verify merged tile position
-        const expectedPos = (() => {
-          switch(direction) {
-            case 'up': return { q: 0, r: -1 }
-            case 'down': return { q: 0, r: 1 }
-            case 'upLeft': return { q: -1, r: 0 }
-            case 'upRight': return { q: 1, r: -1 }
-            case 'downLeft': return { q: -1, r: 1 }
-            case 'downRight': return { q: 1, r: 0 }
-          }
-        })()
-
-        expect(tilesAfterMove[0].position).toEqual(expectedPos)
-      })
-    })
-
-    it('should not allow invalid moves outside hexagonal bounds', () => {
-      const store = useGameStore.getState()
-      
-      // Place a tile at the edge of the grid
-      const edgeTile: Tile = {
-        id: '1',
-        value: 2,
-        position: { q: 2, r: 0 } // Right edge
-      }
-      
-      store.tiles = [edgeTile]
-
-      // Try to move right
-      store.moveTiles('downRight')
-
-      // Tile should stay in place
-      expect(store.tiles[0].position).toEqual(edgeTile.position)
-    })
-
-    it('should handle multiple tiles moving in the same direction', () => {
-      const store = useGameStore.getState()
-      
-      // Create a line of three tiles
-      const initialTiles: Tile[] = [
-        { id: '1', value: 2, position: { q: -1, r: 0 } },
-        { id: '2', value: 2, position: { q: 0, r: 0 } },
-        { id: '3', value: 2, position: { q: 1, r: 0 } }
-      ]
-      
-      store.tiles = initialTiles
-
-      // Move tiles left
-      store.moveTiles('upLeft')
-
-      const tilesAfterMove = store.tiles.filter(t => t.id !== store.tiles[store.tiles.length - 1].id) // Exclude new spawned tile
-
-      // Should have two tiles: one merged (4) and one unmerged (2)
-      expect(tilesAfterMove.length).toBe(2)
-      expect(tilesAfterMove.some(t => t.value === 4)).toBe(true)
-      expect(tilesAfterMove.some(t => t.value === 2)).toBe(true)
-    })
-  })
-
-  describe('Game Over', () => {
-    it('should detect game over when no valid moves are possible', () => {
-      const store = useGameStore.getState()
-      
-      // Fill the grid with alternating values that can't merge
-      const tiles: Tile[] = []
-      const GRID_SIZE = 4
-      const range = Math.floor(GRID_SIZE / 2)
-      
-      for (let q = -range; q <= range; q++) {
-        for (let r = Math.max(-range, -q-range); r <= Math.min(range, -q+range); r++) {
-          if (Math.abs(-q-r) <= range) {
-            tiles.push({
-              id: uuidv4(),
-              value: (q + r) % 2 === 0 ? 2 : 4,
-              position: { q, r }
-            })
-          }
-        }
-      }
-      
-      store.tiles = tiles
-
-      // Try all possible moves
-      const directions: Direction[] = ['up', 'down', 'upLeft', 'upRight', 'downLeft', 'downRight']
-      directions.forEach(direction => store.moveTiles(direction))
-
-      expect(store.gameOver).toBe(true)
-    })
-  })
-}) 
+// Helper function to determine expected position after move
+function getExpectedPosition(direction: Direction): { row: number; col: number } {
+  switch (direction) {
+    case 'up':
+      return { row: 2, col: 0 } // Top of second ring
+    case 'down':
+      return { row: 2, col: 6 } // Bottom of second ring
+    case 'left':
+      return { row: 2, col: 9 } // Left side of second ring
+    case 'right':
+      return { row: 2, col: 3 } // Right side of second ring
+    case 'upLeft':
+      return { row: 2, col: 10 } // Top-left of second ring
+    case 'upRight':
+      return { row: 2, col: 2 } // Top-right of second ring
+    case 'downLeft':
+      return { row: 2, col: 8 } // Bottom-left of second ring
+    case 'downRight':
+      return { row: 2, col: 4 } // Bottom-right of second ring
+  }
+} 

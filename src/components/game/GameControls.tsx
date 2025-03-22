@@ -7,18 +7,7 @@ export function GameControls() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      console.log('Key pressed:', event.key)
       switch (event.key) {
-        case 'ArrowUp':
-          event.preventDefault()
-          console.log('Moving up')
-          move('up')
-          break
-        case 'ArrowDown':
-          event.preventDefault()
-          console.log('Moving down')
-          move('down')
-          break
         case 'ArrowLeft':
           event.preventDefault()
           console.log('Moving left')
@@ -30,21 +19,25 @@ export function GameControls() {
           move('right')
           break
         case 'q':
+        case 'Q':
           event.preventDefault()
           console.log('Moving up-left')
           move('upLeft')
           break
         case 'e':
+        case 'E':
           event.preventDefault()
           console.log('Moving up-right')
           move('upRight')
           break
-        case 'z':
+        case 'a':
+        case 'A':
           event.preventDefault()
           console.log('Moving down-left')
           move('downLeft')
           break
-        case 'c':
+        case 'd':
+        case 'D':
           event.preventDefault()
           console.log('Moving down-right')
           move('downRight')
@@ -57,14 +50,6 @@ export function GameControls() {
   }, [move])
 
   const handlers = useSwipeable({
-    onSwipedUp: () => {
-      console.log('Swiped up')
-      move('up')
-    },
-    onSwipedDown: () => {
-      console.log('Swiped down')
-      move('down')
-    },
     onSwipedLeft: () => {
       console.log('Swiped left')
       move('left')
@@ -78,18 +63,55 @@ export function GameControls() {
   })
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div {...handlers} className="w-full max-w-xs">
-        <button
-          onClick={resetGame}
-          className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-        >
-          New Game
-        </button>
+    <div {...handlers} className="flex flex-col items-center space-y-4">
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="col-span-3 mb-2">
+          <div className="text-sm text-muted-foreground">Game Controls</div>
+        </div>
+        <div className="col-span-1">
+          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+            Q
+          </kbd>
+          <div className="text-xs text-muted-foreground">Up Left</div>
+        </div>
+        <div className="col-span-1">
+          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+            E
+          </kbd>
+          <div className="text-xs text-muted-foreground">Up Right</div>
+        </div>
+        <div className="col-span-1">
+          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+            ←
+          </kbd>
+          <div className="text-xs text-muted-foreground">Left</div>
+        </div>
+        <div className="col-span-1">
+          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+            →
+          </kbd>
+          <div className="text-xs text-muted-foreground">Right</div>
+        </div>
+        <div className="col-span-1">
+          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+            A
+          </kbd>
+          <div className="text-xs text-muted-foreground">Down Left</div>
+        </div>
+        <div className="col-span-1">
+          <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+            D
+          </kbd>
+          <div className="text-xs text-muted-foreground">Down Right</div>
+        </div>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Use arrow keys or swipe to move tiles. Q/E/Z/C for diagonal moves.
-      </p>
+      
+      <button
+        onClick={resetGame}
+        className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+      >
+        Reset Game
+      </button>
     </div>
   )
 } 
